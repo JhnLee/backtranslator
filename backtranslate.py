@@ -30,15 +30,13 @@ def split_sentences(contents, max_len):
     new_contents = []
     doc_len = []
 
-    for i in range(len(contents)):
+    for i in tqdm(range(len(contents)), desc="splits"):
         contents[i] = contents[i].strip()
         if isinstance(contents[i], bytes):
             contents[i] = contents[i].decode("utf-8")
         sent_list = nltk.tokenize.sent_tokenize(contents[i])
 
         has_long = False
-        if i % 100 == 0:
-            print("splitting sentence {:d}".format(i))
         for split_punc in [".", ";", ",", " ", ""]:
             if split_punc == " " or not split_punc:
                 offset = 100
@@ -74,6 +72,9 @@ def backtranslate(args, texts):
         "pytorch/fairseq", args.tgt2src_model, tokenizer="moses", bpe="fastbpe"
     ).to(args.device)
 
+    src2tgt.eval()
+    tgt2src.eval()
+
     # TODO: Split workers for multi-gpu translate
     # if args.n_gpu > 1:
     #     src2tgt = torch.nn.DataParallel(src2tgt)
@@ -84,26 +85,27 @@ def backtranslate(args, texts):
     iterator = tqdm(range(len(splited_text) // args.batch_size + 1), desc="Iteration")
 
     back_translated_sents = []
-    for i in iterator:
-        start_idx = i * args.batch_size
-        batch = splited_text[start_idx : start_idx + args.batch_size]
-        translated_data = src2tgt.translate(
-            batch,
-            sampling_topk=args.sampling_topk,
-            sampling_topp=args.sampling_topp,
-            sampling=args.sampling,
-            temperature=args.temperature,
-            beam_size=args.beam_size,
-        )
-        backtranslated_data = tgt2src.translate(
-            translated_data,
-            sampling_topk=args.sampling_topk,
-            sampling_topp=args.sampling_topp,
-            sampling=args.sampling,
-            temperature=args.temperature,
-            beam_size=args.beam_size,
-        )
-        back_translated_sents += backtranslated_data
+    with torch.no_grad():
+        for i in iterator:
+            start_idx = i * args.batch_size
+            batch = splited_text[start_idx : start_idx + args.batch_size]
+            translated_data = src2tgt.translate(
+                batch,
+                sampling_topk=args.sampling_topk,
+                sampling_topp=args.sampling_topp,
+                sampling=args.sampling,
+                temperature=args.temperature,
+                beam_size=args.beam_size,
+            )
+            backtranslated_data = tgt2src.translate(
+                translated_data,
+                sampling_topk=args.sampling_topk,
+                sampling_topp=args.sampling_topp,
+                sampling=args.sampling,
+                temperature=args.temperature,
+                beam_size=args.beam_size,
+            )
+            back_translated_sents += backtranslated_data
 
     back_translated_docs = []
     count = 0
