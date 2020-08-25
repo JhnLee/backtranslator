@@ -3,7 +3,7 @@ import os
 import csv
 import logging
 import argparse
-from backtranslate import backtranslate
+from backtranslate import BackTranslator
 
 logger = logging.getLogger(__name__)
 
@@ -61,10 +61,16 @@ if __name__ == "__main__":
         help="The tgt2src translation model to use(from English to target language). Refer to https://github.com/pytorch/fairseq/tree/master/examples/translation.",
     )
     parser.add_argument(
+        "--tokenizer", default="moses", type=str, help="Tokenizer for fairseq hub model",
+    )
+    parser.add_argument(
+        "--bpe", default="fastbpe", type=str, help="BPE for fairseq hub model",
+    )
+    parser.add_argument(
         "--batch_size", type=int, required=True, help="Batch size",
     )
     parser.add_argument(
-        "--max_len", default=512, type=int,
+        "--max_len", default=300, type=int,
     )
     parser.add_argument(
         "--sampling_topk", default=-1, type=int,
@@ -95,12 +101,32 @@ if __name__ == "__main__":
             data.append(line)
     text, labels = list(zip(*data[1:]))
 
+    if isinstance(text, tuple):
+        text = list(text)
+
     if "imdb" in args.data_dir or "IMDB" in args.data_dir:
         text = [clean_for_imdb(t) for t in text]
 
     print("Do back-translation for {} sentences".format(len(text)))
 
-    back_translated_docs = backtranslate(args, text)
+    bt = BackTranslator(
+        args.src2tgt_model,
+        args.tgt2src_model,
+        tokenizer=args.tokenizer,
+        bpe=args.bpe,
+        device=args.device,
+    )
+
+    back_translated_docs = bt.backtranslate_docs(
+        doc=text,
+        max_len=args.max_len,
+        batch_size=args.batch_size,
+        sampling_topk=args.sampling_topk,
+        sampling_topp=args.sampling_topp,
+        sampling=args.sampling,
+        temperature=args.temperature,
+        beam_size=args.beam_size,
+    )
     assert len(labels) == len(back_translated_docs)
 
     output_file_name = "bt_" + os.path.basename(args.data_dir)
