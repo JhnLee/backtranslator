@@ -23,26 +23,29 @@ def clean_for_imdb(st):
             if end_pos != -1:
                 st = st[:start_pos] + st[end_pos + 1 :]
             else:
-                print("incomplete href")
-                print("before {}".format(st))
+                logger.info("incomplete href")
+                logger.info("before {}".format(st))
                 st = st[:start_pos] + st[start_pos + len("<a href=")]
-                print("after {}".format(st))
+                logger.info("after {}".format(st))
 
         st = st.replace("</a>", "")
     st = st.replace("\\n", " ")
     return st
 
 
-def translate(args, gpu_num, doc):
-    device = torch.device(
-        "cuda:" + str(gpu_num) if torch.cuda.is_available() and not args.no_cuda else "cpu"
-    )
+def translate(args, doc, gpu_num=None):
+    if gpu_num is not None:
+        device = torch.device("cuda:" + str(gpu_num))
+        visible = args.gpus[0]
+    else:
+        device, visible = torch.device("cpu"), None
     bt = BackTranslator(
         args.src2tgt_model,
         args.tgt2src_model,
         tokenizer=args.tokenizer,
         bpe=args.bpe,
         device=device,
+        visible_device=visible,
     )
     return bt.backtranslate_docs(
         doc=doc,
@@ -57,7 +60,7 @@ def translate(args, gpu_num, doc):
 
 
 def multi_translate(args, gpu_num, doc, queue):
-    translated_doc = translate(args, gpu_num, doc)
+    translated_doc = translate(args, doc, gpu_num)
     queue.put(translated_doc)
 
 
@@ -74,15 +77,16 @@ def main(args):
     if "imdb" in args.data_dir or "IMDB" in args.data_dir:
         text = [clean_for_imdb(t) for t in text]
 
-    print("Do back-translation for {} sentences".format(len(text)))
+    logger.info("Do back-translation for {} sentences".format(len(text)))
 
-    if args.num_gpu_use > 1:
-        split_point = len(text) // args.num_gpu_use
+    if args.gpus is not None and len(args.gpus) > 1:
+        logger.info("Use Multiple GPUs: {}".format(", ".join([str(i) for i in args.gpus])))
+        split_point = len(text) // len(args.gpus)
 
         text_splitted = []
-        for gpu_id in range(args.num_gpu_use):
+        for gpu_id in args.gpus:
             text_splitted.append(text[gpu_id * split_point : (gpu_id + 1) * split_point])
-            if gpu_id == args.num_gpu_use - 1:
+            if gpu_id == len(args.gpus) - 1:
                 text_splitted[-1] += text[(gpu_id + 1) * split_point :]
         assert sum(len(s) for s in text_splitted) == len(text)
 
@@ -90,7 +94,7 @@ def main(args):
         q = Queue()
 
         procs = []
-        for i in range(args.num_gpu_use):
+        for i in range(len(args.gpus)):
             proc = Process(target=multi_translate, args=(args, i, text_splitted[i], q))
             procs.append(proc)
             proc.start()
@@ -104,9 +108,14 @@ def main(args):
 
         for proc in procs:
             proc.join()
-
     else:
-        back_translated_docs = translate(args, 0, text)
+        if args.gpus is not None:
+            gpu = args.gpus[0]
+            logger.info("Use only one GPU: {}".format(gpu))
+            back_translated_docs = translate(args, text, args.gpus[0])
+        else:
+            logger.info("Use cpu")
+            back_translated_docs = translate(args, text)
     assert len(labels) == len(back_translated_docs)
 
     output_file_name = "bt_" + os.path.basename(args.data_dir)
@@ -117,7 +126,7 @@ def main(args):
         for line, labels in zip(back_translated_docs, labels):
             tsv_writer.writerow([line, labels])
 
-    print("Translated documents are saved in {}".format(output_dir))
+    logger.info("Translated documents are saved in {}".format(output_dir))
 
 
 if __name__ == "__main__":
@@ -196,16 +205,24 @@ if __name__ == "__main__":
         type=float,
     )
     parser.add_argument(
-        "--num_gpu_use",
-        default=1,
+        "--gpus",
+        nargs="+",
+        default=None,
         type=int,
     )
-
     parser.add_argument("--no_cuda", action="store_true", help="Not to use CUDA")
     args = parser.parse_args()
 
-    assert (
-        args.num_gpu_use <= torch.cuda.device_count()
-    ), "The number of GPU used is more than you have"
+    if args.gpus is not None:
+        assert (
+            len(args.gpus) <= torch.cuda.device_count()
+        ), "The number of GPU used is more than you have"
+
+    # Setup logger
+    logging.basicConfig(
+        format="%(asctime)s - %(name)s -  %(message)s",
+        datefmt="%m/%d/%Y %H:%M:%S",
+        level=logging.INFO,
+    )
 
     main(args)
