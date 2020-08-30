@@ -22,7 +22,7 @@ bt.backtranslate(sample_sentence)
 # 'Python is an interpreted, sophisticated, universal programming language.'
 ```
 
-You can also use multiple documents
+You can also use multiple documents (The length of the documents does not have any limitation)
 ```
 sample_doc = ['Python is dynamically typed and garbage-collected.', 
               'It supports multiple programming paradigms, including structured (particularly, procedural), object-oriented, and functional programming.', 
@@ -34,5 +34,19 @@ bt.backtranslate_docs(sample_doc)
 # "Python is often described as the 'Battery Language' because of the comprehensive standard library."]
 ```
 
+By using `main.py`, you can train your own tsv document (to see the detail format of the tsv file, see the [example file](./data/imdb_sample.tsv))  
+(Notice that the tsv file does not have to contain `label` columns.)  
+```
+# Example for using cpu
+python main.py --data_dir=./data/imdb_sample.tsv --output_dir=./output/ --batch_size=32 
+
+# for using single gpu (example for gpu 1)
+python main.py --data_dir=./data/imdb_sample.tsv --output_dir=./output/ --batch_size=64 --gpus 1
+
+# for using multiple gpus (for gpu 0 and 1)
+python main.py --data_dir=./data/imdb_sample.tsv --output_dir=./output/ --batch_size=64 --gpus 0 1
+```
+
 ## Reference
+[google research UDA](https://github.com/google-research/uda)  
 [fairseq NMT models](https://github.com/pytorch/fairseq/tree/master/examples/translation)
