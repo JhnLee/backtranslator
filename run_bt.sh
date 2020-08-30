@@ -5,4 +5,5 @@ batch_size=64
 python main.py \
     --data_dir=${data_dir} \
     --output_dir=${output_dir} \
-    --batch_size=${batch_size}
+    --batch_size=${batch_size} \
+    --num_gpu=2

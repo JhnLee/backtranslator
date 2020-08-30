@@ -15,11 +15,6 @@ class BackTranslator:
         self.src2tgt.eval()
         self.tgt2src.eval()
 
-        # TODO: Split workers for multi-gpu translate
-        # if args.n_gpu > 1:
-        #     src2tgt = torch.nn.DataParallel(src2tgt)
-        #     tgt2src = torch.nn.DataParallel(tgt2src)
-
     @staticmethod
     def split_sent_by_punc(sent, punc, offset):
         """split sentence by the punctuation
@@ -40,15 +35,16 @@ class BackTranslator:
                 break
         return sent_list
 
-    @staticmethod
-    def split_sentences(contents, max_len):
+    def split_sentences(self, contents, max_len):
         """Split paragraph to sentences
         Adapted from UDA official code
         """
         new_contents = []
         doc_len = []
 
-        for i in tqdm(range(len(contents)), desc="splits"):
+        for i in tqdm(
+            range(len(contents)), desc="splits", disable=self.src2tgt.device.index not in [None, 0]
+        ):
             contents[i] = contents[i].strip()
             if isinstance(contents[i], bytes):
                 contents[i] = contents[i].decode("utf-8")
@@ -119,9 +115,13 @@ class BackTranslator:
         temperature=0.9,
         beam_size=1,
     ):
-        splited_text, original_lens = BackTranslator.split_sentences(doc, max_len)
+        splited_text, original_lens = self.split_sentences(doc, max_len)
 
-        iterator = tqdm(range(len(splited_text) // batch_size + 1), desc="Iteration")
+        iterator = tqdm(
+            range(len(splited_text) // batch_size + 1),
+            desc="Iteration",
+            disable=self.src2tgt.device.index not in [None, 0],
+        )
 
         back_translated_sents = []
         for i in iterator:
