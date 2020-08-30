@@ -1,24 +1,30 @@
 import torch
 import nltk
+import logging
 from tqdm import tqdm, trange
 
 
 class BackTranslator:
-    def __init__(self, src2tgt, tgt2src, tokenizer, bpe, device):
-        self.src2tgt = torch.hub.load("pytorch/fairseq", src2tgt, tokenizer=tokenizer, bpe=bpe).to(
-            device
-        )
-        self.tgt2src = torch.hub.load("pytorch/fairseq", tgt2src, tokenizer=tokenizer, bpe=bpe).to(
-            device
-        )
+    def __init__(self, src2tgt, tgt2src, tokenizer, bpe, device, visible_device=None):
+        if visible_device is None and device != torch.device("cpu"):
+            visible_device = int(device[-1])
 
-        self.src2tgt.eval()
-        self.tgt2src.eval()
+        self.visible_device = visible_device
+        self.src2tgt = (
+            torch.hub.load("pytorch/fairseq", src2tgt, tokenizer=tokenizer, bpe=bpe)
+            .to(device)
+            .eval()
+        )
+        self.tgt2src = (
+            torch.hub.load("pytorch/fairseq", tgt2src, tokenizer=tokenizer, bpe=bpe)
+            .to(device)
+            .eval()
+        )
 
     @staticmethod
     def split_sent_by_punc(sent, punc, offset):
         """split sentence by the punctuation
-        Adapted from UDA official code
+        Adapted from UDA official code https://github.com/google-research/uda/blob/master/back_translate/split_paragraphs.py
         """
         sent_list = []
         start = 0
@@ -37,13 +43,15 @@ class BackTranslator:
 
     def split_sentences(self, contents, max_len):
         """Split paragraph to sentences
-        Adapted from UDA official code
+        Adapted from UDA official code https://github.com/google-research/uda/blob/master/back_translate/split_paragraphs.py
         """
         new_contents = []
         doc_len = []
 
         for i in tqdm(
-            range(len(contents)), desc="splits", disable=self.src2tgt.device.index not in [None, 0]
+            range(len(contents)),
+            desc="splits",
+            disable=self.src2tgt.device.index not in [None, self.visible_device],
         ):
             contents[i] = contents[i].strip()
             if isinstance(contents[i], bytes):
@@ -120,7 +128,7 @@ class BackTranslator:
         iterator = tqdm(
             range(len(splited_text) // batch_size + 1),
             desc="Iteration",
-            disable=self.src2tgt.device.index not in [None, 0],
+            disable=self.src2tgt.device.index not in [None, self.visible_device],
         )
 
         back_translated_sents = []
