@@ -6,4 +6,4 @@ python main.py \
     --data_dir=${data_dir} \
     --output_dir=${output_dir} \
     --batch_size=${batch_size} \
-    --num_gpu=2
+    --gpus 0 1
