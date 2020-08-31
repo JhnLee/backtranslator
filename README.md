@@ -1,6 +1,14 @@
 # Back-translator
 The back-translation module using fairseq translation models available in PyTorch Hub
 
+## Requirements
+torch, nltk, tqdm
+
+Make sure to download the nltk's punkt tokenizer  
+```
+$ python -c "import nltk; nltk.download('punkt')"
+```
+
 ## Example Usage
 Load pretrained NMT models [made by fairseq](https://github.com/pytorch/fairseq/tree/master/examples/translation)  
 ``` 
@@ -38,13 +46,13 @@ By using `main.py`, you can train your own tsv document (to see the detail forma
 (Notice that the tsv file does not have to contain `label` columns.)  
 ```
 # Example for using cpu
-python main.py --data_dir=./data/imdb_sample.tsv --output_dir=./output/ --batch_size=32 
+$ python main.py --data_dir=./data/imdb_sample.tsv --output_dir=./output/ --batch_size=32 
 
-# for using single gpu (example for gpu 1)
-python main.py --data_dir=./data/imdb_sample.tsv --output_dir=./output/ --batch_size=64 --gpus 1
+# for using single gpu (example for using only one gpu; gpu 1)
+$ python main.py --data_dir=./data/imdb_sample.tsv --output_dir=./output/ --batch_size=64 --gpus 1
 
-# for using multiple gpus (for gpu 0 and 1)
-python main.py --data_dir=./data/imdb_sample.tsv --output_dir=./output/ --batch_size=64 --gpus 0 1
+# for using multiple gpus (example for using two gpus; gpu 0 and 1)
+$ python main.py --data_dir=./data/imdb_sample.tsv --output_dir=./output/ --batch_size=64 --gpus 0 1
 ```
 
 ## Reference
