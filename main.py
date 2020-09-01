@@ -47,7 +47,7 @@ def translate(args, doc, gpu_num=None):
         device=device,
         visible_device=visible,
     )
-    return bt.backtranslate_docs(
+    result = bt.backtranslate_docs(
         doc=doc,
         max_len=args.max_len,
         batch_size=args.batch_size,
@@ -57,6 +57,7 @@ def translate(args, doc, gpu_num=None):
         temperature=args.temperature,
         beam_size=args.beam_size,
     )
+    return (gpu_num, result) if gpu_num is not None else result
 
 
 def multi_translate(args, gpu_num, doc, queue):
@@ -99,9 +100,13 @@ def main(args):
             procs.append(proc)
             proc.start()
 
-        back_translated_docs = []
+        q_result = []
         for p in procs:
-            back_translated_docs += q.get()
+            q_result += q.get()
+
+        back_translated_docs = []
+        for doc_split in sorted(q_result):
+            back_translated_docs += doc_split[1]
 
         q.close()
         q.join_thread()
@@ -112,7 +117,7 @@ def main(args):
         if args.gpus is not None:
             gpu = args.gpus[0]
             logger.info("Use only one GPU: {}".format(gpu))
-            back_translated_docs = translate(args, text, args.gpus[0])
+            back_translated_docs = translate(args, text, args.gpus[0])[1]
         else:
             logger.info("Use cpu")
             back_translated_docs = translate(args, text)
@@ -120,6 +125,11 @@ def main(args):
 
     output_file_name = "bt_" + os.path.basename(args.data_dir)
     output_dir = os.path.join(args.output_dir, output_file_name)
+
+    folder_name = os.path.dirname(output_dir)
+    if not os.path.isdir(folder_name):
+        os.makedirs(folder_name)
+
     with open(output_dir, "wt") as f:
         tsv_writer = csv.writer(f, delimiter="\t")
         tsv_writer.writerow(data[0])

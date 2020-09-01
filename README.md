@@ -2,7 +2,7 @@
 The back-translation module using fairseq translation models available in PyTorch Hub
 
 ## Requirements
-torch, nltk, tqdm
+torch, nltk, tqdm, cython, fastBPE
 
 Make sure to download the nltk's punkt tokenizer  
 ```
