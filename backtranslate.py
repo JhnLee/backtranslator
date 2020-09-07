@@ -43,7 +43,6 @@ class BackTranslator:
 
     def split_sentences(self, contents, max_len):
         """Split paragraph to sentences
-        Adapted from UDA official code https://github.com/google-research/uda/blob/master/back_translate/split_paragraphs.py
         """
         new_contents = []
         doc_len = []
@@ -58,30 +57,39 @@ class BackTranslator:
                 contents[i] = contents[i].decode("utf-8")
             sent_list = nltk.tokenize.sent_tokenize(contents[i])
 
-            has_long = False
-            for split_punc in [".", ";", ",", " ", ""]:
-                if split_punc == " " or not split_punc:
-                    offset = 100
+            new_sent_list = []
+            new_sent = ""
+            for sent in sent_list:
+                if len(new_sent) + len(sent) < max_len: 
+                    new_sent += " " + sent
+                elif len(sent) < max_len:
+                    new_sent_list.append(new_sent.strip())
+                    new_sent = sent
                 else:
-                    offset = 5
-                has_long = False
-                new_sent_list = []
-                for sent in sent_list:
-                    if len(sent) < max_len:
-                        new_sent_list += [sent]
-                    else:
-                        has_long = True
+                    for split_punc in [".", ";", ",", " ", ""]:
+                        if split_punc == " " or not split_punc:
+                            offset = 100
+                        else:
+                            offset = 5
                         sent_split = BackTranslator.split_sent_by_punc(sent, split_punc, offset)
-                        new_sent_list += sent_split
-                sent_list = new_sent_list
-                if not has_long:
-                    break
+                        if all(len(s) < max_len for s in sent_split):
+                            break
+                    for sent_ in sent_split:
+                        if len(new_sent) + len(sent_) < max_len: 
+                            new_sent += " " + sent_
+                        else:
+                            new_sent_list.append(new_sent.strip())
+                            new_sent = sent_
+            if new_sent:
+                new_sent_list.append(new_sent.strip())
+
+            sent_list = new_sent_list
 
             contents[i] = None
-            doc_len += [len(sent_list)]
+            doc_len.append(len(sent_list))
 
             for st in sent_list:
-                new_contents += [st]
+                new_contents.append(st)
         return new_contents, doc_len
 
     def backtranslate(
@@ -123,10 +131,10 @@ class BackTranslator:
         temperature=0.9,
         beam_size=1,
     ):
-        splited_text, original_lens = self.split_sentences(doc, max_len)
+        splitted_text, original_lens = self.split_sentences(doc, max_len)
 
         iterator = tqdm(
-            range(len(splited_text) // batch_size + 1),
+            range(len(splitted_text) // batch_size + 1),
             desc="Iteration",
             disable=self.src2tgt.device.index not in [None, self.visible_device],
         )
@@ -134,9 +142,9 @@ class BackTranslator:
         back_translated_sents = []
         for i in iterator:
             start_idx = i * batch_size
-            batch = splited_text[start_idx : start_idx + batch_size]
+            original_sents = splitted_text[start_idx : start_idx + batch_size]
             back_translated_sents += self.backtranslate(
-                batch, sampling_topk, sampling_topp, sampling, temperature, beam_size
+                original_sents, sampling_topk, sampling_topp, sampling, temperature, beam_size
             )
 
         back_translated_docs = []
