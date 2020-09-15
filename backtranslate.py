@@ -130,6 +130,7 @@ class BackTranslator:
         sampling=True,
         temperature=0.9,
         beam_size=1,
+        return_sentence_pair=False,
     ):
         splitted_text, original_lens = self.split_sentences(doc, max_len)
 
@@ -139,21 +140,33 @@ class BackTranslator:
             disable=self.src2tgt.device.index not in [None, self.visible_device],
         )
 
+        original_sents = []
         back_translated_sents = []
         for i in iterator:
             start_idx = i * batch_size
-            original_sents = splitted_text[start_idx : start_idx + batch_size]
+            sent = splitted_text[start_idx : start_idx + batch_size]
+            original_sents += sent
             back_translated_sents += self.backtranslate(
-                original_sents, sampling_topk, sampling_topp, sampling, temperature, beam_size
+                sent, sampling_topk, sampling_topp, sampling, temperature, beam_size
             )
-
-        back_translated_docs = []
-        count = 0
-        for i, n_sent in enumerate(original_lens):
-            doc = []
-            for _ in range(n_sent):
-                doc.append(back_translated_sents[count].strip())
-                count += 1
-            back_translated_docs.append(" ".join(doc))
-
-        return back_translated_docs
+        
+        if return_sentence_pair:
+            doc_pairs = []
+            count = 0
+            for i, n_sent in enumerate(original_lens):
+                doc = []
+                for _ in range(n_sent):
+                    doc.append((original_sents[count].strip(), back_translated_sents[count].strip()))
+                    count += 1
+                doc_pairs.append(doc)
+            return doc_pairs
+        else:
+            back_translated_docs = []
+            count = 0
+            for i, n_sent in enumerate(original_lens):
+                doc = []
+                for _ in range(n_sent):
+                    doc.append(back_translated_sents[count].strip())
+                    count += 1
+                back_translated_docs.append(" ".join(doc))
+            return back_translated_docs

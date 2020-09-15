@@ -1,6 +1,7 @@
 import torch
 import os
 import csv
+import pickle
 import logging
 import argparse
 from torch.multiprocessing import set_start_method, Process, Queue
@@ -56,6 +57,7 @@ def translate(args, doc, gpu_num=None):
         sampling=args.sampling,
         temperature=args.temperature,
         beam_size=args.beam_size,
+        return_sentence_pair=args.return_sentence_pair,
     )
     return (gpu_num, result) if gpu_num is not None else result
 
@@ -66,11 +68,18 @@ def multi_translate(args, gpu_num, doc, queue):
 
 
 def main(args):
-    data = []
-    with open(args.data_dir, encoding="utf-8") as f:
-        for line in csv.reader(f, delimiter="\t"):
-            data.append(line)
-    text, labels = list(zip(*data[1:]))
+    if args.labels:
+        data = []
+        with open(args.data_dir, encoding="utf-8") as f:
+            for line in csv.reader(f, delimiter="\t"):
+                data.append(line)
+            text, labels = list(zip(*data[1:]))
+    else:
+        text = []
+        with open(args.data_dir, encoding="utf-8") as f:
+            for line in f.readlines():
+                text.append(line.strip())
+        labels = None
 
     if isinstance(text, tuple):
         text = list(text)
@@ -102,7 +111,7 @@ def main(args):
 
         q_result = []
         for p in procs:
-            q_result += q.get()
+            q_result.append(q.get())
 
         back_translated_docs = []
         for doc_split in sorted(q_result):
@@ -121,7 +130,6 @@ def main(args):
         else:
             logger.info("Use cpu")
             back_translated_docs = translate(args, text)
-    assert len(labels) == len(back_translated_docs)
 
     output_file_name = "bt_" + os.path.basename(args.data_dir)
     output_dir = os.path.join(args.output_dir, output_file_name)
@@ -130,11 +138,73 @@ def main(args):
     if not os.path.isdir(folder_name):
         os.makedirs(folder_name)
 
-    with open(output_dir, "wt") as f:
-        tsv_writer = csv.writer(f, delimiter="\t")
-        tsv_writer.writerow(data[0])
-        for line, labels in zip(back_translated_docs, labels):
-            tsv_writer.writerow([line, labels])
+    if args.return_sentence_pair:
+        # Save original sentence pair
+        filename, ext = os.path.splitext(output_dir)
+        with open(filename + ".pickle", "wb") as f:
+            pickle.dump(back_translated_docs, f)
+
+        # Save back-translated sentences
+        bt_doc = [" ".join(list(zip(*d))[1]) for d in back_translated_docs]
+        with open(output_dir, "wt") as f:
+            if labels is not None:
+                tsv_writer = csv.writer(f, delimiter="\t")
+                tsv_writer.writerow(data[0])
+                for line, label in zip(bt_doc, labels):
+                    tsv_writer.writerow([line, label])
+            else:
+                for line in bt_doc:
+                    f.write(line)
+                    f.write('\n')
+
+        # Save cross sentences
+        new_back_translated_docs = []
+        for doc in back_translated_docs:
+            new_doc = []
+            for j, sent in enumerate(doc):
+                if j % 2 == 0:
+                    new_doc.append(sent)
+                else:
+                    new_doc.append(sent[::-1])
+            new_back_translated_docs.append(new_doc)
+        new_docs1, new_docs2 = [], []
+        for doc in new_back_translated_docs:
+            n1, n2 = list(zip(*doc))
+            new_docs1.append(" ".join(n1))
+            new_docs2.append(" ".join(n2))
+        
+        filename, ext = os.path.splitext(output_dir)
+        with open(filename + "_pair1" + ext, "wt") as f:
+            if labels is not None:
+                tsv_writer = csv.writer(f, delimiter="\t")
+                tsv_writer.writerow(data[0])
+                for line, label in zip(new_docs1, labels):
+                    tsv_writer.writerow([line, label])
+            else:
+                for line in new_docs1:
+                    f.write(line)
+                    f.write('\n')
+        with open(filename + "_pair2" + ext, "wt") as f:
+            if labels is not None:
+                tsv_writer = csv.writer(f, delimiter="\t")
+                tsv_writer.writerow(data[0])
+                for line, label in zip(new_docs2, labels):
+                    tsv_writer.writerow([line, label])
+            else:
+                for line in new_docs2:
+                    f.write(line)
+                    f.write('\n')
+    else:
+        with open(output_dir, "wt") as f:
+            if labels is not None:
+                tsv_writer = csv.writer(f, delimiter="\t")
+                tsv_writer.writerow(data[0])
+                for line, label in zip(back_translated_docs, labels):
+                    tsv_writer.writerow([line, label])
+            else:
+                for line in back_translated_docs:
+                    f.write(line)
+                    f.write('\n')
 
     logger.info("Translated documents are saved in {}".format(output_dir))
 
@@ -154,6 +224,11 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="The output directory where the backtranslated file will be saved.",
+    )
+    parser.add_argument(
+        "--labels",
+        action="store_true",
+        help="Whether to have label columns",
     )
     parser.add_argument(
         "--src2tgt_model",
@@ -187,7 +262,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--max_len",
-        default=300,
+        default=250,
         type=int,
     )
     parser.add_argument(
@@ -219,6 +294,10 @@ if __name__ == "__main__":
         nargs="+",
         default=None,
         type=int,
+    )
+    parser.add_argument(
+        "--return_sentence_pair",
+        action="store_true",
     )
     parser.add_argument("--no_cuda", action="store_true", help="Not to use CUDA")
     args = parser.parse_args()
